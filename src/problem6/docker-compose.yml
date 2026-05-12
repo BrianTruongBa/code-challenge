@@ -1,0 +1,56 @@
+# Problem 6 — Postgres + Redis + API (default port 8002).
+name: problem6
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: scoreboard
+    ports:
+      - "5433:5432"
+    volumes:
+      - problem6_pg_data:/var/lib/postgresql/data
+      - ./src/sql/resources.sql:/docker-entrypoint-initdb.d/01-resources.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build: .
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: '8002'
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: scoreboard
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      SOCKET_CORS_ORIGIN: '*'
+      RATE_LIMIT_ENABLED: 'true'
+      SOCKET_IO_REDIS_ADAPTER: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  problem6_pg_data:

@@ -1,0 +1,51 @@
+# Infrastructure only for problems 5 (MySQL) and 6 (PostgreSQL + Redis).
+# Problem 4 has no database. Run the APIs on the host with the env vars in README.md.
+name: problems-456-infra
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: problem5
+    ports:
+      - "3307:3306"
+    volumes:
+      - problems456_mysql_data:/var/lib/mysql
+      - ./src/problem5/src/sql/resources.sql:/docker-entrypoint-initdb.d/01-resources.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: scoreboard
+    ports:
+      - "5433:5432"
+    volumes:
+      - problems456_pg_data:/var/lib/postgresql/data
+      - ./src/problem6/src/sql/resources.sql:/docker-entrypoint-initdb.d/01-resources.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  problems456_mysql_data:
+  problems456_pg_data:

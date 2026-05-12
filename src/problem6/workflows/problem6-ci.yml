@@ -1,0 +1,110 @@
+# CI for src/problem6 — lint, build, integration tests against Postgres + Redis.
+# Pattern: service containers + boot API + Vitest (similar to larger backend monorepos).
+#
+# GitHub Actions only runs workflows from .github/workflows/ at the repo root.
+name: Problem 6 CI
+
+on:
+  push:
+    paths:
+      - 'src/problem6/**'
+      - 'src/problem6/workflows/problem6-ci.yml'
+  pull_request:
+    paths:
+      - 'src/problem6/**'
+      - 'src/problem6/workflows/problem6-ci.yml'
+
+defaults:
+  run:
+    working-directory: src/problem6
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: scoreboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d scoreboard"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/problem6/package-lock.json
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply schema
+        run: PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d scoreboard -v ON_ERROR_STOP=1 -f src/sql/resources.sql
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm run build
+
+      - name: Write .env for CI
+        run: |
+          cat > .env << 'EOF'
+          PORT=8002
+          NODE_ENV=test
+          DB_HOST=127.0.0.1
+          DB_PORT=5432
+          DB_USER=postgres
+          DB_PASSWORD=postgres
+          DB_NAME=scoreboard
+          REDIS_HOST=127.0.0.1
+          REDIS_PORT=6379
+          JWT_SECRET=ci-jwt-secret-not-for-production
+          SOCKET_CORS_ORIGIN=*
+          SOCKET_IO_REDIS_ADAPTER=false
+          RATE_LIMIT_ENABLED=false
+          DD_TRACE_ENABLED=false
+          EOF
+
+      - name: Start API
+        run: |
+          npm start &
+          echo "PID=$!"
+        env:
+          CI: true
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8002/ready; then
+              echo "ready ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "timeout waiting for /ready"
+          exit 1
+
+      - name: Run tests
+        run: npm test
+        env:
+          PROBLEM6_BASE_URL: http://127.0.0.1:8002

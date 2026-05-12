@@ -1,0 +1,38 @@
+# Problem 5 only — MySQL + API. No Postgres/Redis/problem6.
+name: problem5
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: problem5
+    ports:
+      # Host port 3307 avoids clashing with another MySQL on 3306 (e.g. other compose stacks).
+      - "3307:3306"
+    volumes:
+      - problem5_mysql_data:/var/lib/mysql
+      - ./src/sql/resources.sql:/docker-entrypoint-initdb.d/01-resources.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  api:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: problem5
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  problem5_mysql_data:

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Problem 6 — Socket.IO scoreboard demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        line-height: 1.45;
+      }
+      body {
+        max-width: 52rem;
+        margin: 1.5rem auto;
+        padding: 0 1rem;
+      }
+      label {
+        display: block;
+        margin: 0.75rem 0 0.25rem;
+        font-weight: 600;
+      }
+      input[type='text'] {
+        width: 100%;
+        max-width: 28rem;
+        padding: 0.4rem 0.5rem;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.45rem 1rem;
+        cursor: pointer;
+      }
+      #log {
+        margin-top: 1.25rem;
+        padding: 0.75rem 1rem;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 8rem;
+        max-height: 24rem;
+        overflow: auto;
+      }
+      .hint {
+        color: #64748b;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Socket.IO — <code>/scoreboard</code></h1>
+    <p>
+      Use <strong>HTTP</strong> base URL (not <code>ws://</code>). Namespace path is
+      <code>/scoreboard</code>. Start the API with <code>npm run dev</code> and keep
+      <code>SOCKET_CORS_ORIGIN=*</code> in dev so this page can load from <code>file://</code> or any
+      origin.
+    </p>
+
+    <label for="base">Server base (no trailing slash)</label>
+    <input id="base" type="text" value="http://127.0.0.1:8002" autocomplete="off" />
+
+    <div class="hint">
+      Client connects to <code id="full"></code> — same port as REST; Socket.IO uses
+      <code>/socket.io/</code> under the hood.
+    </div>
+
+    <button type="button" id="go">Connect</button>
+    <button type="button" id="stop" disabled>Disconnect</button>
+
+    <div id="log" aria-live="polite"></div>
+
+    <!-- Socket.IO v4 matches server dependency -->
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+    <script>
+      const logEl = document.getElementById('log')
+      const baseInput = document.getElementById('base')
+      const fullEl = document.getElementById('full')
+      const goBtn = document.getElementById('go')
+      const stopBtn = document.getElementById('stop')
+
+      function log(line) {
+        const t = new Date().toISOString().slice(11, 23)
+        logEl.textContent += `[${t}] ${line}\n`
+        logEl.scrollTop = logEl.scrollHeight
+      }
+
+      function updateFullUrl() {
+        const base = baseInput.value.trim().replace(/\/$/, '')
+        fullEl.textContent = base + '/scoreboard'
+      }
+      baseInput.addEventListener('input', updateFullUrl)
+      updateFullUrl()
+
+      let socket = null
+
+      goBtn.addEventListener('click', () => {
+        if (socket?.connected) {
+          log('Already connected.')
+          return
+        }
+        const base = baseInput.value.trim().replace(/\/$/, '')
+        const url = base + '/scoreboard'
+        log('Connecting to ' + url + ' …')
+
+        socket = io(url, {
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionAttempts: 5,
+        })
+
+        socket.on('connect', () => {
+          log('connect — id=' + socket.id)
+          stopBtn.disabled = false
+        })
+
+        socket.on('connect_error', err => {
+          log('connect_error — ' + (err && err.message ? err.message : String(err)))
+        })
+
+        socket.on('disconnect', reason => {
+          log('disconnect — ' + reason)
+          stopBtn.disabled = true
+        })
+
+        socket.on('top_scores', rows => {
+          log('top_scores — ' + JSON.stringify(rows).slice(0, 2000) + (JSON.stringify(rows).length > 2000 ? '…' : ''))
+        })
+      })
+
+      stopBtn.addEventListener('click', () => {
+        if (socket) {
+          socket.disconnect()
+          socket = null
+          log('Disconnected by user.')
+        }
+        stopBtn.disabled = true
+      })
+    </script>
+  </body>
+</html>
